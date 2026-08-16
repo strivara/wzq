@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>五子棋 · 联机对战</title>
+<style>
+  :root { --wood1:#e8c08a; --wood2:#d49c55; --bg:#f3ede2; --panel:#fff; --ink:#2b2620; --line:#6b4a25; --accent:#c0392b; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; background:radial-gradient(circle at 30% 20%, #fbf6ec, var(--bg)); color:var(--ink);
+    font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif; display:flex; flex-direction:column; align-items:center; padding:22px 14px 40px; }
+  h1 { font-size:24px; letter-spacing:4px; margin:0 0 4px; font-weight:700; }
+  .subtitle { font-size:13px; color:#8a7a64; margin-bottom:16px; }
+  .wrap { display:flex; gap:22px; flex-wrap:wrap; justify-content:center; align-items:flex-start; }
+  .board-card { background:var(--panel); padding:14px; border-radius:16px; box-shadow:0 10px 30px rgba(80,50,20,.18); }
+  canvas { display:block; border-radius:8px; cursor:pointer; }
+  .side { width:248px; display:flex; flex-direction:column; gap:14px; }
+  .card { background:var(--panel); border-radius:14px; padding:16px; box-shadow:0 6px 18px rgba(80,50,20,.12); }
+  .lobby { display:flex; flex-direction:column; gap:10px; }
+  .lobby label { font-size:13px; color:#6b5b45; }
+  .lobby input { font-family:inherit; font-size:14px; padding:9px 10px; border:1px solid #d8cbb4; border-radius:9px; width:100%; }
+  button { font-family:inherit; font-size:15px; padding:10px 14px; border:none; border-radius:10px; background:var(--ink); color:#fff; cursor:pointer; transition:transform .06s, opacity .2s; }
+  button:hover { opacity:.9; } button:active { transform:translateY(1px); }
+  button.ghost { background:#efe6d7; color:var(--ink); }
+  .status { font-size:16px; font-weight:600; min-height:22px; display:flex; align-items:center; gap:8px; }
+  .dot { width:15px; height:15px; border-radius:50%; border:1px solid rgba(0,0,0,.25); flex:none; }
+  .dot.black { background:radial-gradient(circle at 35% 30%, #555, #000); }
+  .dot.white { background:radial-gradient(circle at 35% 30%, #fff, #cfcfcf); }
+  .banner { font-size:14px; font-weight:700; color:var(--accent); min-height:18px; margin-top:6px; }
+  .roomline { font-size:12px; color:#8a7a64; word-break:break-all; }
+  .chat { display:flex; flex-direction:column; gap:8px; }
+  .messages { height:150px; overflow-y:auto; background:#f7f2e9; border-radius:10px; padding:8px; font-size:13px; display:flex; flex-direction:column; gap:4px; }
+  .messages div { line-height:1.4; }
+  .messages .me { color:#1d6fb8; }
+  .chat input { font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid #d8cbb4; border-radius:9px; }
+  .hint { font-size:12px; color:#8a7a64; line-height:1.6; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+  <h1>五 子 棋 · 联 机</h1>
+  <div class="subtitle">同一房间号的两人远程对弈（黑方先手）</div>
+
+  <div class="wrap">
+    <div class="board-card">
+      <canvas id="board"></canvas>
+    </div>
+
+    <div class="side">
+      <!-- 大厅 -->
+      <div class="card lobby" id="lobby">
+        <label>房间号（发给好友，双方填一样的）</label>
+        <input id="room" placeholder="例如：abc123" maxlength="32">
+        <label>你的昵称</label>
+        <input id="name" placeholder="玩家" maxlength="16">
+        <button id="joinBtn">创建 / 加入房间</button>
+        <div class="hint">两人都进入同一房间号即开局。把房间号通过微信/QQ 发给对方即可远程对战。</div>
+      </div>
+
+      <!-- 对局面板 -->
+      <div class="card hidden" id="gamePanel">
+        <div class="status" id="status"></div>
+        <div class="banner" id="banner"></div>
+        <div class="roomline" id="roomLine"></div>
+        <div class="btns" style="display:flex; gap:8px; margin-top:12px;">
+          <button class="ghost" id="copyRoom" style="flex:1">复制房间号</button>
+          <button class="ghost" id="restart" style="flex:1">重新开始</button>
+        </div>
+        <div class="btns" style="margin-top:8px;">
+          <button class="ghost" id="leave" style="width:100%">退出房间</button>
+        </div>
+      </div>
+
+      <!-- 聊天 -->
+      <div class="card chat hidden" id="chatPanel">
+        <div class="messages" id="messages"></div>
+        <div style="display:flex; gap:6px;">
+          <input id="chatInput" placeholder="说点什么…" maxlength="200">
+          <button id="sendChat" style="padding:8px 12px;">发送</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const SIZE = 15, EMPTY = 0, BLACK = 1, WHITE = 2;
+const CELL = 36, MARGIN = 28, LOGICAL = MARGIN * 2 + CELL * (SIZE - 1);
+const STAR = [[3,3],[3,11],[11,3],[11,11],[7,7]];
+const DIRS = [[1,0],[0,1],[1,1],[1,-1]];
+
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+const dpr = window.devicePixelRatio || 1;
+canvas.width = LOGICAL * dpr; canvas.height = LOGICAL * dpr;
+canvas.style.width = LOGICAL + 'px'; canvas.style.height = LOGICAL + 'px';
+ctx.scale(dpr, dpr);
+
+let board, myColor = null, current = BLACK, gameOver = false, winner = null, lastMove = null, hoverCell = null, roomId = null;
+let ws = null, connected = false;
+
+/* ---------- 渲染 ---------- */
+function draw() {
+  const g = ctx.createLinearGradient(0,0,LOGICAL,LOGICAL);
+  g.addColorStop(0,'#e8c08a'); g.addColorStop(1,'#d49c55');
+  ctx.fillStyle = g; ctx.fillRect(0,0,LOGICAL,LOGICAL);
+  ctx.strokeStyle = 'rgba(80,50,20,0.85)'; ctx.lineWidth = 1;
+  for (let i=0;i<SIZE;i++){ const p=MARGIN+i*CELL;
+    ctx.beginPath(); ctx.moveTo(MARGIN,p); ctx.lineTo(LOGICAL-MARGIN,p); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(p,MARGIN); ctx.lineTo(p,LOGICAL-MARGIN); ctx.stroke(); }
+  ctx.fillStyle='rgba(60,40,15,0.9)';
+  for (const [r,c] of STAR){ ctx.beginPath(); ctx.arc(MARGIN+c*CELL,MARGIN+r*CELL,4,0,Math.PI*2); ctx.fill(); }
+  if (board) for (let r=0;r<SIZE;r++) for (let c=0;c<SIZE;c++) if (board[r][c]!==EMPTY) drawStone(r,c,board[r][c]);
+  if (hoverCell && !gameOver && board && current===myColor && board[hoverCell.r][hoverCell.c]===EMPTY) {
+    ctx.globalAlpha=0.4; drawStone(hoverCell.r,hoverCell.c,myColor); ctx.globalAlpha=1;
+  }
+  if (lastMove) { const x=MARGIN+lastMove.c*CELL,y=MARGIN+lastMove.r*CELL;
+    ctx.strokeStyle='#c0392b'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(x,y,CELL*0.46,0,Math.PI*2); ctx.stroke(); }
+}
+function drawStone(r,c,p){ const x=MARGIN+c*CELL,y=MARGIN+r*CELL,rad=CELL*0.42;
+  const grad=ctx.createRadialGradient(x-rad*0.3,y-rad*0.3,rad*0.1,x,y,rad);
+  if (p===BLACK){grad.addColorStop(0,'#666');grad.addColorStop(1,'#000');} else {grad.addColorStop(0,'#fff');grad.addColorStop(1,'#c8c8c8');}
+  ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(x,y,rad,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.25)'; ctx.lineWidth=1; ctx.stroke(); }
+
+function updateStatus() {
+  const s=document.getElementById('status'), b=document.getElementById('banner');
+  if (!connected) { s.innerHTML='<span class="dot"></span> 未连接'; return; }
+  if (gameOver) {
+    if (winner===0) { s.innerHTML='<span class="dot"></span> 平局'; b.textContent='棋盘已满'; }
+    else if (winner===myColor) { s.innerHTML='<span class="dot '+(myColor===BLACK?'black':'white')+'"></span> 你赢了！'; b.textContent='🎉 五子连珠！'; }
+    else { s.innerHTML='<span class="dot '+(myColor===BLACK?'black':'white')+'"></span> 你输了'; b.textContent='对手连成五子'; }
+    return;
+  }
+  b.textContent='';
+  if (current===myColor) s.innerHTML='<span class="dot '+(myColor===BLACK?'black':'white')+'"></span> 轮到你落子';
+  else s.innerHTML='<span class="dot '+(current===BLACK?'black':'white')+'"></span> 等待对手…';
+}
+
+/* ---------- 网络 ---------- */
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  ws = new WebSocket(proto + location.host);
+  ws.onopen = () => {
+    connected = true;
+    ws.send(JSON.stringify({ type:'join', room: roomId, name: document.getElementById('name').value.trim() }));
+  };
+  ws.onclose = () => { connected = false; updateStatus(); };
+  ws.onmessage = (ev) => {
+    let msg; try { msg = JSON.parse(ev.data); } catch(e){ return; }
+    handleServer(msg);
+  };
+}
+function sendMove(r,c){ if(ws && connected) ws.send(JSON.stringify({type:'move', r, c})); }
+function sendChat(t){ if(ws && connected) ws.send(JSON.stringify({type:'chat', text:t})); }
+
+function handleServer(msg) {
+  switch (msg.type) {
+    case 'joined':
+      myColor = msg.color; roomId = msg.room;
+      document.getElementById('lobby').classList.add('hidden');
+      document.getElementById('gamePanel').classList.remove('hidden');
+      document.getElementById('chatPanel').classList.remove('hidden');
+      document.getElementById('roomLine').textContent = '房间号：' + roomId + '　你的身份：' + (msg.color===BLACK?'黑方（先手）':'白方');
+      board = Array.from({length:SIZE},()=>Array(SIZE).fill(EMPTY));
+      if (msg.count < 2) { document.getElementById('status').innerHTML = '<span class="dot"></span> 已加入，等待对手…'; document.getElementById('banner').textContent='把房间号发给好友，两人到齐即开局'; }
+      draw();
+      break;
+    case 'start':
+      myColor = msg.you; current = msg.first; gameOver = false; winner = null; lastMove = null;
+      board = Array.from({length:SIZE},()=>Array(SIZE).fill(EMPTY));
+      addMsg('系统', '对局开始！' + (msg.you===BLACK?'你执黑先手':'你执白后手'));
+      draw(); updateStatus();
+      break;
+    case 'move':
+      board[msg.r][msg.c] = msg.player; lastMove = {r:msg.r,c:msg.c};
+      current = msg.current; gameOver = msg.gameOver; winner = msg.winner;
+      draw(); updateStatus();
+      break;
+    case 'restart':
+      board = Array.from({length:SIZE},()=>Array(SIZE).fill(EMPTY)); current = BLACK; gameOver=false; winner=null; lastMove=null;
+      addMsg('系统','已重新开始'); draw(); updateStatus();
+      break;
+    case 'opponent_left':
+      gameOver = true;
+      document.getElementById('banner').textContent='对手已离开，对局结束'; updateStatus();
+      addMsg('系统','对手已离开房间');
+      break;
+    case 'chat':
+      addMsg(msg.from, msg.text, msg.from === document.getElementById('name').value.trim());
+      break;
+    case 'error':
+      alert(msg.msg);
+      break;
+  }
+}
+
+function addMsg(from, text, me) {
+  const box = document.getElementById('messages');
+  const d = document.createElement('div');
+  d.className = me ? 'me' : '';
+  d.textContent = from + '：' + text;
+  box.appendChild(d); box.scrollTop = box.scrollHeight;
+}
+
+/* ---------- 交互 ---------- */
+function cellFromEvent(e) {
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * (LOGICAL / rect.width);
+  const y = (e.clientY - rect.top) * (LOGICAL / rect.height);
+  return { r: Math.round((y-MARGIN)/CELL), c: Math.round((x-MARGIN)/CELL) };
+}
+canvas.addEventListener('click', (e) => {
+  if (!connected || gameOver || current !== myColor || !board) return;
+  const { r, c } = cellFromEvent(e);
+  if (r<0||r>=SIZE||c<0||c>=SIZE||board[r][c]!==EMPTY) return;
+  sendMove(r, c);
+});
+canvas.addEventListener('mousemove', (e) => {
+  const { r, c } = cellFromEvent(e);
+  const valid = r>=0&&r<SIZE&&c>=0&&c<SIZE&&board&&board[r][c]===EMPTY&&current===myColor&&!gameOver&&connected;
+  const need = valid ? {r,c} : null;
+  if (JSON.stringify(need) !== JSON.stringify(hoverCell)) { hoverCell = need; draw(); }
+});
+canvas.addEventListener('mouseleave', () => { hoverCell = null; draw(); });
+
+document.getElementById('joinBtn').addEventListener('click', () => {
+  const r = document.getElementById('room').value.trim();
+  if (!r) { alert('请填写房间号（可随意起名，双方一致即可）'); return; }
+  roomId = r; connect();
+});
+document.getElementById('restart').addEventListener('click', () => { if(ws&&connected) ws.send(JSON.stringify({type:'restart'})); });
+document.getElementById('copyRoom').addEventListener('click', () => {
+  navigator.clipboard.writeText(roomId).then(()=>alert('房间号已复制：'+roomId)).catch(()=>alert('房间号：'+roomId));
+});
+document.getElementById('leave').addEventListener('click', () => { if(ws) ws.close(); location.reload(); });
+document.getElementById('sendChat').addEventListener('click', sendChatClick);
+document.getElementById('chatInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter') sendChatClick(); });
+function sendChatClick(){ const v=document.getElementById('chatInput').value.trim(); if(!v) return; sendChat(v); addMsg('我', v, true); document.getElementById('chatInput').value=''; }
+
+draw();
+updateStatus();
+</script>
+</body>
+</html>

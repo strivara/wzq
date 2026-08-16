@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>五子棋 · 人机对战</title>
+<style>
+  :root {
+    --wood-1: #e3b878;
+    --wood-2: #d49c55;
+    --bg: #f3ede2;
+    --panel: #ffffff;
+    --ink: #2b2620;
+    --line: #6b4a25;
+    --accent: #c0392b;
+    --accent2: #2e7d6b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(circle at 30% 20%, #fbf6ec, var(--bg));
+    color: var(--ink);
+    font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px 40px;
+  }
+  h1 { font-size: 26px; letter-spacing: 6px; margin: 0 0 4px; font-weight: 700; }
+  .subtitle { font-size: 13px; color: #8a7a64; margin-bottom: 18px; }
+  .wrap { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
+  .board-card {
+    background: var(--panel); padding: 14px; border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(80, 50, 20, 0.18);
+  }
+  canvas { display: block; border-radius: 8px; cursor: pointer; touch-action: none; }
+  .side { width: 250px; display: flex; flex-direction: column; gap: 14px; }
+  .card {
+    background: var(--panel); border-radius: 14px; padding: 16px;
+    box-shadow: 0 6px 18px rgba(80, 50, 20, 0.12);
+  }
+  .status {
+    font-size: 17px; font-weight: 600; min-height: 24px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .dot { width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(0,0,0,.25); flex: none; }
+  .dot.black { background: radial-gradient(circle at 35% 30%, #555, #000); }
+  .dot.white { background: radial-gradient(circle at 35% 30%, #fff, #cfcfcf); }
+  .scoreboard { display: flex; gap: 10px; font-size: 13px; margin-top: 12px; }
+  .scoreboard div { flex: 1; text-align: center; padding: 8px 4px; background: #f7f2e9; border-radius: 10px; }
+  .scoreboard b { display: block; font-size: 18px; margin-top: 2px; }
+  .btns { display: flex; flex-direction: column; gap: 10px; }
+  button {
+    font-family: inherit; font-size: 15px; padding: 11px 14px; border: none;
+    border-radius: 10px; background: var(--ink); color: #fff; cursor: pointer;
+    transition: transform .06s ease, opacity .2s;
+  }
+  button:hover { opacity: .9; }
+  button:active { transform: translateY(1px); }
+  button.ghost { background: #efe6d7; color: var(--ink); }
+  .difficulty { display: flex; gap: 8px; }
+  .difficulty button { flex: 1; padding: 9px 0; font-size: 13px; background: #efe6d7; color: var(--ink); border: 2px solid transparent; }
+  .difficulty button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .toggle { display: flex; align-items: center; justify-content: space-between; font-size: 14px; }
+  .switch { position: relative; width: 46px; height: 26px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; inset: 0; background: #cbb89a; border-radius: 26px; transition: .2s; cursor: pointer; }
+  .slider::before { content: ""; position: absolute; height: 20px; width: 20px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+  .switch input:checked + .slider { background: var(--accent); }
+  .switch input:checked + .slider::before { transform: translateX(20px); }
+  .hint { font-size: 12px; color: #8a7a64; line-height: 1.6; }
+  .win-banner { margin-top: 6px; font-size: 15px; font-weight: 700; color: var(--accent); min-height: 20px; }
+  .label { font-size: 12px; color: #8a7a64; margin-bottom: 8px; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+  <h1>五 子 棋</h1>
+  <div class="subtitle">人机对战 · 你执黑先行，AI 执白</div>
+
+  <div class="wrap">
+    <div class="board-card"><canvas id="board"></canvas></div>
+
+    <div class="side">
+      <div class="card">
+        <div class="status" id="status"></div>
+        <div class="win-banner" id="banner"></div>
+        <div class="scoreboard">
+          <div>你（黑）<b id="cBlack">0</b></div>
+          <div>AI（白）<b id="cWhite">0</b></div>
+          <div>回合<b id="moves">0</b></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="label">难度</div>
+        <div class="difficulty" id="difficulty">
+          <button data-d="easy">简单</button>
+          <button data-d="medium" class="active">中等</button>
+          <button data-d="hard">困难</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="btns">
+          <button id="restart">重新开始</button>
+          <button class="ghost" id="undo">悔棋</button>
+          <a href="/multi" style="text-decoration:none"><button class="ghost" style="width:100%">👥 联机对战（两人远程）</button></a>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="toggle">
+          <span>AI 先手（你执白）</span>
+          <label class="switch">
+            <input type="checkbox" id="aiFirst">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="hint" style="margin-top:12px">
+          规则：横、竖、斜任意方向先连成 5 子者获胜。<br>
+          提示：把鼠标移到交叉点上有落子预览；<br>
+          困难难度 AI 会主动做“双三/四三”杀棋。
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const SIZE = 15;
+const EMPTY = 0, HUMAN = 1, AI = 2;
+const CELL = 36, MARGIN = 28;
+const LOGICAL = MARGIN * 2 + CELL * (SIZE - 1); // 560
+const DIRS = [[1, 0], [0, 1], [1, 1], [1, -1]];
+const STAR = [[3,3],[3,11],[11,3],[11,11],[7,7]];
+const WIN = 1e9;
+
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+const dpr = window.devicePixelRatio || 1;
+canvas.width = LOGICAL * dpr;
+canvas.height = LOGICAL * dpr;
+canvas.style.width = LOGICAL + 'px';
+canvas.style.height = LOGICAL + 'px';
+ctx.scale(dpr, dpr);
+
+let board, current, gameOver, winner, lastMove, hoverCell, aiFirstFlag, difficulty = 'medium';
+let scoreBlack = 0, scoreWhite = 0, moveCount = 0;
+let snapshots = [], winningLine = null;
+
+/* ---------- 基础工具 ---------- */
+const clone = b => b.map(r => r.slice());
+const inBounds = (r, c) => r >= 0 && r < SIZE && c >= 0 && c < SIZE;
+const newBoard = () => Array.from({ length: SIZE }, () => Array(SIZE).fill(EMPTY));
+
+/* ---------- 胜负判定 ---------- */
+function checkWin(b, r, c, p) {
+  for (const [dr, dc] of DIRS) {
+    let cnt = 1;
+    for (let s = 1; s < 5; s++) { const nr=r+dr*s, nc=c+dc*s; if (inBounds(nr,nc)&&b[nr][nc]===p) cnt++; else break; }
+    for (let s = 1; s < 5; s++) { const nr=r-dr*s, nc=c-dc*s; if (inBounds(nr,nc)&&b[nr][nc]===p) cnt++; else break; }
+    if (cnt >= 5) return true;
+  }
+  return false;
+}
+
+function winLine(b, r, c, p) {
+  for (const [dr, dc] of DIRS) {
+    const cells = [{ r, c }]; let s = 1;
+    while (inBounds(r+dr*s, c+dc*s) && b[r+dr*s][c+dc*s] === p) { cells.push({ r: r+dr*s, c: c+dc*s }); s++; }
+    s = 1;
+    while (inBounds(r-dr*s, c-dc*s) && b[r-dr*s][c-dc*s] === p) { cells.unshift({ r: r-dr*s, c: c-dc*s }); s++; }
+    if (cells.length >= 5) return cells;
+  }
+  return null;
+}
+
+/* ---------- 局面评估（模式识别） ---------- */
+// 在已用 '2' 填充边界的线串上，统计玩家 '1' 的棋形得分
+const PATTERNS = [
+  { re: /11111/g,   v: 1000000 },  // 五连
+  { re: /011110/g,  v: 100000 },   // 活四
+  { re: /011112/g,  v: 10000 },    // 冲四（右挡）
+  { re: /211110/g,  v: 10000 },    // 冲四（左挡）
+  { re: /011100/g,  v: 1000 },     // 活三
+  { re: /001110/g,  v: 1000 },     // 活三
+  { re: /011010/g,  v: 1000 },     // 跳三
+  { re: /010110/g,  v: 1000 },     // 跳三
+  { re: /211100/g,  v: 100 },      // 眠三
+  { re: /001112/g,  v: 100 },      // 眠三
+  { re: /211010/g,  v: 100 },      // 眠三（跳）
+  { re: /010112/g,  v: 100 },      // 眠三（跳）
+  { re: /001100/g,  v: 100 },      // 活二
+  { re: /211000/g,  v: 10 },
+  { re: /000112/g,  v: 10 },
+  { re: /010100/g,  v: 10 },       // 跳二
+  { re: /001010/g,  v: 10 },       // 跳二
+];
+
+function scoreLine(s) {
+  let total = 0;
+  for (const { re, v } of PATTERNS) {
+    const m = s.match(re);
+    if (m) total += m.length * v;
+  }
+  return total;
+}
+
+function encodeCell(v, p) { return v === p ? '1' : (v === EMPTY ? '0' : '2'); }
+
+// 整盘评估：AI 得分 - 人类得分
+function evaluate(b) {
+  return scoreForPlayer(b, AI) - scoreForPlayer(b, HUMAN);
+}
+
+function scoreForPlayer(b, p) {
+  let total = 0;
+  // 行
+  for (let r = 0; r < SIZE; r++) {
+    let s = '2';
+    for (let c = 0; c < SIZE; c++) s += encodeCell(b[r][c], p);
+    s += '2'; total += scoreLine(s);
+  }
+  // 列
+  for (let c = 0; c < SIZE; c++) {
+    let s = '2';
+    for (let r = 0; r < SIZE; r++) s += encodeCell(b[r][c], p);
+    s += '2'; total += scoreLine(s);
+  }
+  // 对角线 \
+  for (let k = -(SIZE - 1); k <= SIZE - 1; k++) {
+    let s = '2';
+    for (let r = 0; r < SIZE; r++) { const c = r - k; if (c >= 0 && c < SIZE) s += encodeCell(b[r][c], p); }
+    s += '2'; if (s.length > 4) total += scoreLine(s);
+  }
+  // 对角线 /
+  for (let k = 0; k <= 2 * (SIZE - 1); k++) {
+    let s = '2';
+    for (let r = 0; r < SIZE; r++) { const c = k - r; if (c >= 0 && c < SIZE) s += encodeCell(b[r][c], p); }
+    s += '2'; if (s.length > 4) total += scoreLine(s);
+  }
+  return total;
+}
+
+// 局部评估：在 (r,c) 落子 p 后，该点四个方向形成的棋形得分（用于排序与单层启发）
+function localScore(b, r, c, p) {
+  let total = 0;
+  for (const [dr, dc] of DIRS) {
+    const arr = [];
+    for (let k = -4; k <= 4; k++) {
+      const rr = r + dr * k, cc = c + dc * k;
+      arr.push(inBounds(rr, cc) ? b[rr][cc] : 2);
+    }
+    let s = '2' + arr.map(v => encodeCell(v, p)).join('') + '2';
+    total += scoreLine(s);
+  }
+  return total;
+}
+
+/* ---------- 候选生成 ---------- */
+function generateCandidates(b) {
+  const cands = [], seen = new Set();
+  let hasStone = false;
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (b[r][c] !== EMPTY) hasStone = true;
+  if (!hasStone) return [{ r: 7, c: 7 }];
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (b[r][c] === EMPTY) continue;
+    for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) {
+      const nr = r + dr, nc = c + dc;
+      if (inBounds(nr, nc) && b[nr][nc] === EMPTY) {
+        const key = nr * SIZE + nc;
+        if (!seen.has(key)) { seen.add(key); cands.push({ r: nr, c: nc }); }
+      }
+    }
+  }
+  return cands;
+}
+
+function orderedCandidates(b, player, limit) {
+  const opp = player === AI ? HUMAN : AI;
+  const cands = generateCandidates(b);
+  for (const m of cands) m._s = localScore(b, m.r, m.c, player) + localScore(b, m.r, m.c, opp);
+  cands.sort((a, b) => b._s - a._s);
+  return cands.slice(0, limit);
+}
+
+function wouldWin(b, m, p) {
+  b[m.r][m.c] = p;
+  const w = checkWin(b, m.r, m.c, p);
+  b[m.r][m.c] = EMPTY;
+  return w;
+}
+
+function findBlock(b, opp) {
+  const cands = generateCandidates(b);
+  for (const m of cands) if (wouldWin(b, m, opp)) return m;
+  return null;
+}
+
+/* ---------- AI 决策 ---------- */
+function aiBestMove() {
+  const cands = generateCandidates(board);
+  if (cands.length === 0) return { r: 7, c: 7 };
+
+  // 1) 自己能直接赢，立刻赢
+  for (const m of cands) if (wouldWin(board, m, AI)) return m;
+
+  // 2) 对手下一步能赢，必须封堵
+  const block = findBlock(board, HUMAN);
+  if (block) {
+    if (difficulty === 'easy' && Math.random() < 0.4) {
+      // 简单难度有概率“漏防”，可被击败
+    } else {
+      return block;
+    }
+  }
+
+  if (difficulty === 'easy') {
+    return cands[Math.floor(Math.random() * cands.length)];
+  }
+
+  if (difficulty === 'medium') {
+    let best = cands[0], bv = -1;
+    for (const m of cands) {
+      const s = localScore(board, m.r, m.c, AI) + localScore(board, m.r, m.c, HUMAN);
+      if (s > bv) { bv = s; best = m; }
+    }
+    return best;
+  }
+
+  // 困难：negamax 搜索（带 alpha-beta 与候选剪枝）
+  return negamaxRoot(board);
+}
+
+function negamaxRoot(b) {
+  const cands = orderedCandidates(b, AI, 12);
+  let best = cands[0], bestVal = -Infinity, alpha = -Infinity;
+  for (const m of cands) {
+    b[m.r][m.c] = AI;
+    let val;
+    if (checkWin(b, m.r, m.c, AI)) val = WIN - 1;
+    else val = -negamax(b, 3, -Infinity, -alpha, HUMAN, 10);
+    b[m.r][m.c] = EMPTY;
+    if (val > bestVal) { bestVal = val; best = m; }
+    if (val > alpha) alpha = val;
+  }
+  return best;
+}
+
+function negamax(b, depth, alpha, beta, player, limit) {
+  if (depth === 0) return player === AI ? evaluate(b) : -evaluate(b);
+  const cands = orderedCandidates(b, player, limit);
+  if (cands.length === 0) return player === AI ? evaluate(b) : -evaluate(b);
+  let best = -Infinity;
+  const opp = player === AI ? HUMAN : AI;
+  for (const m of cands) {
+    b[m.r][m.c] = player;
+    let val;
+    if (checkWin(b, m.r, m.c, player)) val = WIN - (4 - depth);
+    else val = -negamax(b, depth - 1, -beta, -alpha, opp, limit);
+    b[m.r][m.c] = EMPTY;
+    if (val > best) best = val;
+    if (best > alpha) alpha = best;
+    if (alpha >= beta) break;
+  }
+  return best;
+}
+
+/* ---------- 落子流程 ---------- */
+function place(r, c, p) {
+  board[r][c] = p;
+  lastMove = { r, c };
+  moveCount++;
+  if (checkWin(board, r, c, p)) {
+    gameOver = true; winner = p; winningLine = winLine(board, r, c, p);
+    if (p === HUMAN) scoreBlack++; else scoreWhite++;
+    return;
+  }
+  if (moveCount >= SIZE * SIZE) { gameOver = true; winner = 0; }
+}
+
+function startGame(aiFirst) {
+  aiFirstFlag = aiFirst;
+  board = newBoard();
+  current = aiFirst ? AI : HUMAN;
+  gameOver = false; winner = null; winningLine = null;
+  lastMove = null; hoverCell = null; moveCount = 0;
+  snapshots = [{ board: clone(board), current }];
+  draw(); updateStatus();
+  if (aiFirst) setTimeout(aiTurn, 300);
+}
+
+function humanTurn(r, c) {
+  if (gameOver || current !== HUMAN) return;
+  if (!inBounds(r, c) || board[r][c] !== EMPTY) return;
+  place(r, c, HUMAN);
+  draw(); updateStatus();
+  if (gameOver) return;
+  current = AI;
+  updateStatus();
+  setTimeout(aiTurn, 260);
+}
+
+function aiTurn() {
+  if (gameOver) return;
+  const mv = aiBestMove();
+  place(mv.r, mv.c, AI);
+  draw(); updateStatus();
+  if (gameOver) return;
+  current = HUMAN;
+  snapshots.push({ board: clone(board), current });
+  updateStatus();
+}
+
+function undo() {
+  if (snapshots.length <= 1) { startGame(aiFirstFlag); return; }
+  snapshots.pop();
+  const prev = snapshots[snapshots.length - 1];
+  board = clone(prev.board);
+  current = prev.current;
+  gameOver = false; winner = null; winningLine = null; lastMove = null;
+  moveCount = board.flat().filter(v => v !== EMPTY).length;
+  draw(); updateStatus();
+}
+
+/* ---------- 渲染 ---------- */
+function draw() {
+  const g = ctx.createLinearGradient(0, 0, LOGICAL, LOGICAL);
+  g.addColorStop(0, '#e8c08a'); g.addColorStop(1, '#d49c55');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, LOGICAL, LOGICAL);
+
+  ctx.strokeStyle = 'rgba(80,50,20,0.85)'; ctx.lineWidth = 1;
+  for (let i = 0; i < SIZE; i++) {
+    const p = MARGIN + i * CELL;
+    ctx.beginPath(); ctx.moveTo(MARGIN, p); ctx.lineTo(LOGICAL - MARGIN, p); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(p, MARGIN); ctx.lineTo(p, LOGICAL - MARGIN); ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(60,40,15,0.9)';
+  for (const [r, c] of STAR) {
+    ctx.beginPath(); ctx.arc(MARGIN + c * CELL, MARGIN + r * CELL, 4, 0, Math.PI * 2); ctx.fill();
+  }
+
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++)
+    if (board[r][c] !== EMPTY) drawStone(r, c, board[r][c]);
+
+  if (hoverCell && !gameOver && current === HUMAN && board[hoverCell.r][hoverCell.c] === EMPTY) {
+    ctx.globalAlpha = 0.4; drawStone(hoverCell.r, hoverCell.c, HUMAN); ctx.globalAlpha = 1;
+  }
+
+  if (lastMove) {
+    const x = MARGIN + lastMove.c * CELL, y = MARGIN + lastMove.r * CELL;
+    ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x, y, CELL * 0.46, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  if (winningLine) {
+    ctx.strokeStyle = 'rgba(192,57,43,0.85)'; ctx.lineWidth = CELL * 0.3;
+    ctx.lineCap = 'round';
+    const a = winningLine[0], b = winningLine[winningLine.length - 1];
+    ctx.beginPath();
+    ctx.moveTo(MARGIN + a.c * CELL, MARGIN + a.r * CELL);
+    ctx.lineTo(MARGIN + b.c * CELL, MARGIN + b.r * CELL);
+    ctx.stroke();
+  }
+}
+
+function drawStone(r, c, p) {
+  const x = MARGIN + c * CELL, y = MARGIN + r * CELL, rad = CELL * 0.42;
+  const grad = ctx.createRadialGradient(x - rad * 0.3, y - rad * 0.3, rad * 0.1, x, y, rad);
+  if (p === HUMAN) { grad.addColorStop(0, '#666'); grad.addColorStop(1, '#000'); }
+  else { grad.addColorStop(0, '#fff'); grad.addColorStop(1, '#c8c8c8'); }
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 1; ctx.stroke();
+}
+
+/* ---------- UI ---------- */
+function updateStatus() {
+  const s = document.getElementById('status');
+  const banner = document.getElementById('banner');
+  document.getElementById('cBlack').textContent = scoreBlack;
+  document.getElementById('cWhite').textContent = scoreWhite;
+  document.getElementById('moves').textContent = moveCount;
+
+  if (gameOver) {
+    if (winner === HUMAN) { s.innerHTML = '<span class="dot black"></span> 你赢了！'; banner.textContent = '🎉 恭喜，五子连珠！'; }
+    else if (winner === AI) { s.innerHTML = '<span class="dot white"></span> AI 获胜'; banner.textContent = 'AI 连成五子，再试一次？'; }
+    else { s.innerHTML = '<span class="dot"></span> 平局'; banner.textContent = '棋盘已满'; }
+    return;
+  }
+  banner.textContent = '';
+  if (current === HUMAN) s.innerHTML = '<span class="dot black"></span> 轮到你落子';
+  else s.innerHTML = '<span class="dot white"></span> AI 思考中…';
+}
+
+/* ---------- 事件 ---------- */
+function eventToCell(e) {
+  const rect = canvas.getBoundingClientRect();
+  const px = (e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0].clientX)) - rect.left;
+  const py = (e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0].clientY)) - rect.top;
+  const x = px * (LOGICAL / rect.width);
+  const y = py * (LOGICAL / rect.height);
+  return { r: Math.round((y - MARGIN) / CELL), c: Math.round((x - MARGIN) / CELL) };
+}
+
+canvas.addEventListener('click', (e) => { const { r, c } = eventToCell(e); humanTurn(r, c); });
+canvas.addEventListener('mousemove', (e) => {
+  const { r, c } = eventToCell(e);
+  const valid = inBounds(r, c) && board[r][c] === EMPTY && current === HUMAN && !gameOver;
+  const need = valid ? { r, c } : null;
+  if (JSON.stringify(need) !== JSON.stringify(hoverCell)) { hoverCell = need; draw(); }
+});
+canvas.addEventListener('mouseleave', () => { hoverCell = null; draw(); });
+
+document.getElementById('restart').addEventListener('click', () => startGame(aiFirstFlag));
+document.getElementById('undo').addEventListener('click', undo);
+document.getElementById('aiFirst').addEventListener('change', (e) => startGame(e.target.checked));
+document.getElementById('difficulty').addEventListener('click', (e) => {
+  const btn = e.target.closest('button'); if (!btn) return;
+  difficulty = btn.dataset.d;
+  [...e.currentTarget.children].forEach(b => b.classList.toggle('active', b === btn));
+});
+
+startGame(false);
+</script>
+</body>
+</html>
