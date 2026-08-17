@@ -1,13 +1,13 @@
 // 五子棋 · 联机对战服务端
 // 纯 Node 内置模块实现：HTTP 静态托管 + 手写 WebSocket（RFC6455），无第三方依赖。
-// 运行：node server.js   （可用 PORT 环境变量指定端口，默认 3000）
+// 运行：node server.js   （可用 PORT 环境变量指定端口，默认 3201）
 
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3201;
 const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const SIZE = 15;
 const EMPTY = 0, BLACK = 1, WHITE = 2;

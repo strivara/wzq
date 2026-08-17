@@ -1,0 +1,31 @@
+# ============================================================
+# 五子棋自托管 · systemd 守护进程（开机自启 + 崩溃重启）
+# 用法：
+#   1) 把本文件放到 /etc/systemd/system/gomoku.service
+#   2) 确认下面 User / WorkingDirectory / ExecStart 路径与你实际上传位置一致
+#   3) sudo systemctl daemon-reload
+#      sudo systemctl enable --now gomoku
+#   查看状态：systemctl status gomoku
+#   看日志：  journalctl -u gomoku -f
+# ============================================================
+
+[Unit]
+Description=Gomoku Multiplayer Server
+After=network.target
+
+[Service]
+Type=simple
+# 改成你上传文件时用的系统用户（如 www-data / 你的用户名）
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/gomoku
+ExecStart=/usr/bin/node /var/www/gomoku/server.js
+Restart=on-failure
+RestartSec=3
+Environment=PORT=3201
+# Node 日志兜底
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

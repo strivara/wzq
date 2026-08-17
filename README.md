@@ -55,13 +55,13 @@
 cd gomoku
 node server.js
 ```
-启动后默认监听 `3000` 端口，可用环境变量 `PORT` 覆盖。
+启动后默认监听 `3201` 端口，可用环境变量 `PORT` 覆盖。
 
 浏览器打开：
-- 人机对战：`http://localhost:3000/`
-- 联机对战：`http://localhost:3000/multi`
+- 人机对战：`http://localhost:3201/`
+- 联机对战：`http://localhost:3201/multi`
 
-**本机/局域网测试对弈**：开两个浏览器标签页进入 `/multi`，填**同一个房间号**即可开局。同一 WiFi 下的手机或其他电脑，把 `localhost` 换成你电脑的局域网 IP（如 `http://192.168.x.x:3000/multi`）也能进。
+**本机/局域网测试对弈**：开两个浏览器标签页进入 `/multi`，填**同一个房间号**即可开局。同一 WiFi 下的手机或其他电脑，把 `localhost` 换成你电脑的局域网 IP（如 `http://192.168.x.x:3201/multi`）也能进。
 
 > npm 启动：`npm start`（等价于 `node server.js`）
 
@@ -88,7 +88,7 @@ node server.js
 ### 其他方式
 - **Heroku**：已提供 `Procfile`，按平台指引连接仓库即可
 - **Vercel / Netlify**：仅适合部署人机对战（`index.html`），不支持 WebSocket 服务端
-- **自有云服务器 / Docker**：在能运行 Node 的环境执行 `npm start`，用 Nginx 等反向代理暴露 3000 端口并配置 HTTPS
+- **自有云服务器 / Docker**：在能运行 Node 的环境执行 `npm start`，用 Nginx 等反向代理暴露 3201 端口并配置 HTTPS
 
 ---
 
@@ -112,7 +112,7 @@ node server.js
 - **服务端**：`server.js` 使用 Node 内置 `http` 模块，手写实现了 WebSocket 握手与帧编解码，因此**不依赖任何 npm 包**，clone 下来即可 `node server.js` 运行。
 - **胜负判定**：服务端为权威方，对四个方向（横、竖、两斜）进行连子检测，避免客户端不一致。
 - **房间隔离**：房间号作为唯一键，未指定则服务端自动分配；每房间最多 2 人。
-- **端口**：优先读取环境变量 `PORT`，未设置时回退到 `3000`。
+- **端口**：优先读取环境变量 `PORT`，未设置时回退到 `3201`。
 
 ---
 
